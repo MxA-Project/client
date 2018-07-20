@@ -36,67 +36,7 @@ MD_MAX72XX mx = MD_MAX72XX(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
 // Server connection settings
 #define serverUrl ""
 
-void printText(uint8_t modStart, uint8_t modEnd, char *pMsg)
-// Print the text string to the LED matrix modules specified.
-// Message area is padded with blank columns after printing.
-{
-  uint8_t   state = 0;
-  uint8_t   curLen;
-  uint16_t  showLen;
-  uint8_t   cBuf[8];
-  int16_t   col = ((modEnd + 1) * COL_SIZE) - 1;
 
-  mx.control(modStart, modEnd, MD_MAX72XX::UPDATE, MD_MAX72XX::OFF);
-
-  do     // finite state machine to print the characters in the space available
-  {
-    switch(state)
-    {
-      case 0: // Load the next character from the font table
-        // if we reached end of message, reset the message pointer
-        if (*pMsg == '\0')
-        {
-          showLen = col - (modEnd * COL_SIZE);  // padding characters
-          state = 2;
-          break;
-        }
-
-        // retrieve the next character form the font file
-        showLen = mx.getChar(*pMsg++, sizeof(cBuf)/sizeof(cBuf[0]), cBuf);
-        curLen = 0;
-        state++;
-        // !! deliberately fall through to next state to start displaying
-
-      case 1: // display the next part of the character
-        mx.setColumn(col--, cBuf[curLen++]);
-
-        // done with font character, now display the space between chars
-        if (curLen == showLen)
-        {
-          showLen = CHAR_SPACING;
-          state = 2;
-        }
-        break;
-
-      case 2: // initialize state for displaying empty columns
-        curLen = 0;
-        state++;
-        // fall through
-
-      case 3:	// display inter-character spacing or end of message padding (blank columns)
-        mx.setColumn(col--, 0);
-        curLen++;
-        if (curLen == showLen)
-          state = 0;
-        break;
-
-      default:
-        col = -1;   // this definitely ends the do loop
-    }
-  } while (col >= (modStart * COL_SIZE));
-
-  mx.control(modStart, modEnd, MD_MAX72XX::UPDATE, MD_MAX72XX::ON);
-}
 
 void GetServerMessage() {
     HTTPClient http;  //Declare an object of class HTTPClient
@@ -109,6 +49,21 @@ void GetServerMessage() {
     http.end();
 }
 
+/*
+-Preparer le buffer à partir du message à afficher
+exemple 'uint8_t globalBuf[2*(8*MAX_DEVICES)]' : il faut définir sa taille directement car pas pratique dynamiquement quand peu d'espace
+
+on insère x premières colonnes vides dans le buffer
+pour chaque caractère du texte :
+  on charge le caractère dans un buffer temp
+  on copie le contenu du buffer à la suite des infos précédentes dans le buffer global
+  on insère x colonne vide d'espace avant le prochain caractère
+
+-Affiche le texte
+si message plus long que place dispo : on fait dérouler le texte
+  affichage ça défile vers la gauche une fois en entier, puis après petit temps ça recommence
+si message plus court on centre le texte à droite ou à gauche (paramètre à définir)
+*/
 
 void setup() {
   message = "error"
